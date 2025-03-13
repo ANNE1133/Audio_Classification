@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Emotion Detection</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .tab-button {
+            color: #6B7280;
+            border-bottom-color: transparent;
+        }
+        .tab-button:hover {
+            color: #4B5563;
+            border-bottom-color: #E5E7EB;
+        }
+        .tab-button.active-tab {
+            color: #2563EB;
+            border-bottom-color: #2563EB;
+        }
+        .tab-content {
+            padding: 20px;
+            /* border: 1px solid #dee2e6;
+            border-top: none; */
+        }
+        #result {
+            margin-top: 20px;
+            display: none;
+        }
+        .loading-container {
+            display: none;
+            margin-top: 20px;
+            text-align: center;
+        }
+        .progress {
+            height: 20px;
+            margin: 10px 0;
+        }
+        .status-text {
+            margin-bottom: 10px;
+            font-weight: bold;
+            color: #0d6efd;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <header class="text-center mb-12">
+            <h1 class="text-4xl font-bold text-gray-800 mb-2">Audio Emotion Detection</h1>
+            <p class="text-gray-600">Analyze emotions from audio files or YouTube videos</p>
+        </header>
+
+        <main class="max-w-2xl mx-auto bg-white rounded-lg shadow-lg p-6">
+            <!-- Tabs -->
+            <div class="mb-8">
+                <div class="border-b border-gray-200">
+                    <nav class="flex -mb-px" aria-label="Tabs">
+                        <button onclick="switchTab('file-upload')" 
+                                class="tab-button w-1/2 py-4 px-1 text-center border-b-2 font-medium text-sm active-tab"
+                                id="file-tab">
+                            File Upload
+                        </button>
+                        <button onclick="switchTab('youtube-url')" 
+                                class="tab-button w-1/2 py-4 px-1 text-center border-b-2 font-medium text-sm"
+                                id="youtube-tab">
+                            YouTube URL
+                        </button>
+                    </nav>
+                </div>
+            </div>
+
+            <!-- Tab Contents -->
+            <div class="tab-content" id="file-upload-content">
+                <form id="upload-form">
+                    <div class="flex items-center justify-center w-full">
+                        <label for="audio-upload" class="flex flex-col items-center justify-center w-full h-64 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
+                            <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                                <svg class="w-10 h-10 mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                                </svg>
+                                <p class="mb-2 text-sm text-gray-500"><span class="font-semibold">Click to upload</span> or drag and drop</p>
+                                <p class="text-xs text-gray-500">WAV, MP3, or M4A files</p>
+                            </div>
+                            <input id="audio-upload" name="audio" type="file" class="hidden" accept="audio/*" />
+                        </label>
+                    </div>
+                </form>
+            </div>
+
+            <div class="tab-content hidden" id="youtube-url-content">
+                <div class="flex flex-col items-center justify-center h-64">
+                    <div class="w-full max-w-md">
+                        <div class="flex flex-col gap-4">
+                            <input type="text" id="youtube-url" 
+                                   class="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                                   placeholder="Paste YouTube URL here">
+                            <button id="youtube-submit" 
+                                    class="w-full py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors">
+                                Analyze Video
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- <div id="audio-player" class="hidden mt-8 mb-8">
+                <audio id="audio-element" controls class="w-full"></audio>
+            </div> -->
+
+            <!-- Loading Indicator -->
+            <div class="loading-container" id="loadingContainer">
+                <div class="status-text" id="statusText">Processing...</div>
+                <div class="progress">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 100%"></div>
+                </div>
+            </div>
+
+            <!-- Results Section -->
+            <div id="result" class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h4 class="text-xl font-semibold text-blue-800 mb-3"><strong>Analysis Results</strong></h4>
+                <p class="text-blue-800"><strong>Primary Emotion:</strong> <span id="primary-emotion"></span></p>
+                <p class="text-blue-800"><strong>Confidence:</strong> <span id="confidence"></span></p>
+                <div class="mt-3">
+                    <h5 class="text-blue-800 font-medium mb-2">Distribution:</h5>
+                    <div class="progress mb-2" style="background-color: white;">
+                        <div class="progress-bar bg-success" id="positiveBar" role="progressbar"></div>
+                    </div>
+                    <p class="text-blue-600"><small>Positive: <span id="positivePercentage"></span>%</small></p>
+                    <div class="progress mb-2" style="background-color: white;">
+                        <div class="progress-bar bg-danger" id="negativeBar" role="progressbar"></div>
+                    </div>
+                    <p class="text-blue-600"><small>Negative: <span id="negativePercentage"></span>%</small></p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <style>
+        .tab-button {
+            color: #6B7280;
+            border-bottom-color: transparent;
+        }
+        .tab-button:hover {
+            color: #4B5563;
+            border-bottom-color: #E5E7EB;
+        }
+        .tab-button.active-tab {
+            color: #2563EB;
+            border-bottom-color: #2563EB;
+        }
+    </style>
+
+    <script>
+        function switchTab(tabId) {
+            // Hide all tab contents
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.add('hidden');
+            });
+            
+            // Show selected tab content
+            document.getElementById(`${tabId}-content`).classList.remove('hidden');
+            
+            // Update tab buttons
+            document.querySelectorAll('.tab-button').forEach(button => {
+                button.classList.remove('active-tab');
+            });
+            
+            // Activate selected tab button
+            if (tabId === 'file-upload') {
+                document.getElementById('file-tab').classList.add('active-tab');
+            } else {
+                document.getElementById('youtube-tab').classList.add('active-tab');
+            }
+        }
+
+        function showLoading(message = 'Processing...') {
+            document.getElementById('loadingContainer').style.display = 'block';
+            document.getElementById('statusText').textContent = message;
+            document.getElementById('result').style.display = 'none';
+        }
+
+        function hideLoading() {
+            document.getElementById('loadingContainer').style.display = 'none';
+        }
+
+        function showError(message) {
+            hideLoading();
+            alert(message);
+        }
+
+        function updateProgress(status) {
+            document.getElementById('statusText').textContent = status;
+        }
+
+        function displayResults(data) {
+            hideLoading();
+            const resultDiv = document.getElementById('result');
+            resultDiv.style.display = 'block';
+
+            document.getElementById('primary-emotion').textContent = data.primary_emotion;
+            document.getElementById('confidence').textContent = data.confidence;
+
+            const positive = data.distribution.Positive.toFixed(1);
+            const negative = data.distribution.Negative.toFixed(1);
+
+            document.getElementById('positiveBar').style.width = `${positive}%`;
+            document.getElementById('negativeBar').style.width = `${negative}%`;
+            document.getElementById('positivePercentage').textContent = positive;
+            document.getElementById('negativePercentage').textContent = negative;
+        }
+
+        // Handle file upload
+        document.getElementById('audio-upload').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            // Show audio player
+            // const audioPlayer = document.getElementById('audio-player');
+            // const audioElement = document.getElementById('audio-element');
+            // audioElement.src = URL.createObjectURL(file);
+            // audioPlayer.classList.remove('hidden');
+
+            // Show loading indicator
+            showLoading('Analyzing audio file...');
+
+            // Create form data and send to server
+            const formData = new FormData();
+            formData.append('audio', file);
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    displayResults(data);
+                } else {
+                    showError(data.error || 'An error occurred');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showError('An error occurred while processing the audio file');
+            }
+        });
+
+        // Handle YouTube URL submission
+        document.getElementById('youtube-submit').addEventListener('click', async () => {
+            const youtubeUrl = document.getElementById('youtube-url').value.trim();
+            if (!youtubeUrl) {
+                alert('Please enter a YouTube URL');
+                return;
+            }
+
+            // Show loading indicator
+            showLoading('Downloading and analyzing YouTube audio...');
+
+            const formData = new FormData();
+            formData.append('youtube_url', youtubeUrl);
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    displayResults(data);
+                } else {
+                    showError(data.error || 'An error occurred');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showError('An error occurred while processing the YouTube video');
+            }
+        });
+    </script>
+</body>
+</html> 
