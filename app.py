@@ -5,26 +5,28 @@ import re
 import librosa
 import numpy as np
 import tensorflow as tf
+import subprocess
+import soundfile as sf
+import gdown
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
-# Load the models
-print("Attempting to load models...")
-try:
-    print("Current working directory:", os.getcwd())
-    print("Checking if model files exist:")
-    print("model_2.keras exists:", os.path.exists('model_2.keras'))
-    
-    # 
-    model_fold2 = tf.keras.models.load_model('model_2.keras')
-    print("Model fold 2 loaded successfully")
+# Load the modelsimport gdown
+import os
+import tensorflow as tf
 
-except Exception as e:
-    print(f"Error loading models: {str(e)}")
-    print(f"Error type: {type(e)}")
-    model_fold2 = None
+model_path = "best_Over_model2_anecha_fold2.keras"
+drive_file_id = "1X_Uo31Bzb6Hr322YOzFNsbeWOxPXnYL1"
+if not os.path.exists(model_path):
+    print("Downloading model from Google Drive...")
+    gdown.download(f"https://drive.google.com/uc?id={drive_file_id}", model_path, quiet=False)
+
+# Load the model
+model_fold2 = tf.keras.models.load_model(model_path)
+print("Model loaded successfully")
+
 
 # Ensure upload folder exists
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -85,85 +87,137 @@ def download_youtube_audio(url):
     except Exception as e:
         print(f"YouTube error: {str(e)}")
         return None, f"Error accessing video: Please try a different video"
+import os
+import subprocess
 
-def extract_features(audio_file):
-    # Load audio file
-    y, sr = librosa.load(audio_file, duration=30)  # Limit to 30 seconds
-    
-    # Extract Mel Spectrogram
-    mel_spec = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=128)
-    mel_spec = librosa.power_to_db(mel_spec)
-    
-    # Ensure consistent shape for mel spectrogram
-    target_length = 128  # Model expects (None, 128, 128, 1)
-    if mel_spec.shape[1] < target_length:
-        mel_spec = np.pad(mel_spec, ((0,0), (0, target_length-mel_spec.shape[1])))
-    else:
-        mel_spec = mel_spec[:, :target_length]
-    
-    # Reshape for the model - should be (1, 128, 128, 1)
-    mel_spec = mel_spec.reshape(1, 128, 128, 1)
-    
-    # Extract MFCC
-    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
-    
-    # Ensure consistent shape for MFCC
-    target_length_mfcc = 204  # This should match your model's expected input
-    if mfcc.shape[1] < target_length_mfcc:
-        mfcc = np.pad(mfcc, ((0,0), (0, target_length_mfcc-mfcc.shape[1])))
-    else:
-        mfcc = mfcc[:, :target_length_mfcc]
-    
-    mfcc = mfcc.T  # Transpose to match shape (204, 13)
-    mfcc = np.expand_dims(mfcc, 0)  # Add batch dimension
-    
-    print(f"Mel spectrogram shape: {mel_spec.shape}")
-    print(f"MFCC shape: {mfcc.shape}")
-    
-    return mel_spec, mfcc
-
-def predict_emotion(mel_spec, mfcc):
-    # 
-    if model_fold2 is None or model_fold3 is None:
-        return {
-            'error': 'Models not loaded'
-        }
-    
+def convert_audio_to_wav(input_path):
+    """
+    Converts any audio file to WAV format using FFmpeg.
+    Automatically generates the output WAV path.
+    """
     try:
-        # Make predictions with both models
-        pred2 = model_fold2.predict([mel_spec, mfcc])[0]
-        pred3 = model_fold3.predict([mel_spec, mfcc])[0]
+        input_path = os.path.normpath(input_path)
+        output_path = input_path.rsplit(".", 1)[0] + ".wav"  # Replace extension with .wav
         
-        print(f"Model 2 prediction: {pred2}")
-        print(f"Model 3 prediction: {pred3}")
+        print(f"Converting audio: {input_path} → {output_path}")
         
-        # Average the predictions
-        prediction = (float(pred2[0]) + float(pred3[0])) / 2
-        print(f"Average prediction: {prediction}")
+        if not os.path.isfile(input_path):
+            print(f"Source file not found: {input_path}")
+            return None
+            
+        command = ['ffmpeg', '-y', '-i', input_path, '-ac', '1', '-ar', '48000', output_path]
+        subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
         
-        # Convert prediction to emotion
-        emotion_label = "Positive" if prediction >= 0.5 else "Negative"
-        confidence = prediction if prediction >= 0.5 else (1 - prediction)
-        
-        # Ensure predictions are within 0-1 range
-        positive_score = max(0, min(100, prediction * 100))
-        negative_score = max(0, min(100, (1 - prediction) * 100))
-        
-        print(f"Final scores - Positive: {positive_score}%, Negative: {negative_score}%")
-        
+        if os.path.isfile(output_path):
+            print(f"Conversion successful: {output_path}")
+            return output_path
+        else:
+            print(f"Output file not created: {output_path}")
+            return None
+            
+    except Exception as e:
+        print(f"FFmpeg conversion error: {e}")
+        return None
+    
+from sklearn.preprocessing import StandardScaler
+import librosa
+import numpy as np
+import soundfile as sf
+import os
+
+def pad_or_truncate(mel_spectrogram, target_shape=(128, 128)):
+    """
+    Pads or truncates a Mel spectrogram to a fixed shape.
+    """
+    current_shape = mel_spectrogram.shape
+    if current_shape[1] < target_shape[1]:
+        pad_width = target_shape[1] - current_shape[1]
+        mel_spectrogram = np.pad(mel_spectrogram, pad_width=((0, 0), (0, pad_width)), mode='constant')
+    elif current_shape[1] > target_shape[1]:
+        mel_spectrogram = mel_spectrogram[:, :target_shape[1]]
+    
+    return mel_spectrogram
+
+def reshape_and_stack(mel_list, target_shape=(128, 128)):
+    """
+    Reshapes, pads/truncates, and stacks Mel spectrograms.
+    """
+    reshaped_mels = [pad_or_truncate(mel, target_shape) for mel in mel_list]
+    return np.stack(reshaped_mels)
+
+def extract_features(audio_file, target_shape=(128, 128)):
+    """
+    Extracts a Mel Spectrogram from an entire audio file.
+    Applies padding, reshaping, and standardization.
+    """
+
+    # ✅ Convert to WAV if needed
+    if not audio_file.endswith('.wav'):
+        converted_audio = convert_audio_to_wav(audio_file)
+        if converted_audio is None:
+            raise ValueError("Audio conversion failed")
+    else:
+        converted_audio = audio_file
+
+    # ✅ Load the WAV file safely
+    try:
+        y, sr = sf.read(converted_audio)
+        print(f"Successfully loaded WAV file with shape: {y.shape}, Sample rate: {sr}")
+    except Exception as e:
+        if os.path.exists(converted_audio):
+            os.remove(converted_audio)  # Cleanup on error
+        raise ValueError(f"Failed to load WAV file: {e}")
+
+    # ✅ Delete converted file if it was originally non-WAV
+    if audio_file != converted_audio:
+        os.remove(converted_audio)
+
+    # ✅ Extract Mel spectrogram
+    mel_spec = librosa.feature.melspectrogram(y=y, sr=sr, n_fft=1024, win_length=512,
+                                              window='hamming', hop_length=256, n_mels=128, fmax=sr/2)
+    mel_spec = librosa.power_to_db(mel_spec)
+
+    # ✅ Apply padding/truncation
+    mel_spec = pad_or_truncate(mel_spec, target_shape)
+
+    # ✅ Standardization (same as training)
+    mel_spec_flattened = mel_spec.reshape(-1)  # Flatten
+    scaler = StandardScaler()
+    mel_spec_scaled_flattened = scaler.fit_transform(mel_spec_flattened.reshape(-1, 1)).flatten()  # Standardize
+    mel_spec_scaled = mel_spec_scaled_flattened.reshape(target_shape)  # Reshape back
+
+    # ✅ Ensure correct input shape
+    mel_spec_scaled = mel_spec_scaled.reshape(1, 128, 128, 1)
+
+    print(f"Extracted & standardized features from audio file.")
+    return mel_spec_scaled
+
+def predict_emotion(mel_spec):
+    if model_fold2 is None:
+        return {'error': 'Model not loaded'}
+
+    try:
+        # Ensure prediction output is a Python float
+        pred = model_fold2.predict(mel_spec)  # NumPy array
+        pred = float(pred)  # Convert to Python float
+
+        print(f"Model prediction: {pred}")
+
+        # Convert prediction to emotion label
+        emotion_label = "Positive" if pred >= 0.5 else "Negative"
+        confidence = pred if pred >= 0.5 else (1 - pred)
+
         return {
             'primary_emotion': emotion_label,
-            'confidence': f'{confidence * 100:.1f}%',
+            'confidence': f'{confidence * 100:.1f}%',  # This now works correctly
             'distribution': {
-                'Positive': positive_score,
-                'Negative': negative_score
+                'Positive': max(0, min(100, pred * 100)),
+                'Negative': max(0, min(100, (1 - pred) * 100))
             }
         }
     except Exception as e:
-        print(f"Prediction error details: {str(e)}")
-        return {
-            'error': f'Prediction error: {str(e)}'
-        }
+        return {'error': f'Prediction error: {str(e)}'}
+
 
 @app.route('/')
 def index():
@@ -189,8 +243,8 @@ def upload_file():
         # Extract features and predict
         try:
             print("Extracting features from YouTube audio")
-            mel_spec, mfcc = extract_features(filepath)
-            result = predict_emotion(mel_spec, mfcc)
+            mel_spec = extract_features(filepath)
+            result = predict_emotion(mel_spec)
             
             # Clean up downloaded file
             os.remove(filepath)
@@ -226,8 +280,8 @@ def upload_file():
             
             # Extract features and predict
             print("Extracting features from uploaded file")
-            mel_spec, mfcc = extract_features(filepath)
-            result = predict_emotion(mel_spec, mfcc)
+            mel_spec = extract_features(filepath)
+            result = predict_emotion(mel_spec)
             
             # Clean up uploaded file
             os.remove(filepath)
@@ -246,4 +300,4 @@ def upload_file():
     return jsonify({'error': 'Invalid file type'}), 400
 
 if __name__ == '__main__':
-    app.run(debug=True) 
+    app.run(debug=True)
