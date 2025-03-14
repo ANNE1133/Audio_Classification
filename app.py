@@ -147,12 +147,12 @@ def predict_emotion(mel_spec):
         pred = model.predict(mel_spec)
         pred = float(pred)
 
-        emotion_label = "Positive" if pred >= 0.5 else "Negative"
+        emotion_label = "😊 Positive" if pred >= 0.5 else "😞 Negative"
         confidence = pred if pred >= 0.5 else (1 - pred)
 
         return {
             'primary_emotion': emotion_label,
-            'confidence': f'{confidence * 100:.1f}%',
+            'confidence': confidence * 100,  # Convert to percentage
             'distribution': {
                 'Positive': max(0, min(100, pred * 100)),
                 'Negative': max(0, min(100, (1 - pred) * 100))
@@ -160,6 +160,48 @@ def predict_emotion(mel_spec):
         }
     except Exception as e:
         return {'error': f'Prediction error: {str(e)}'}
+def display_results(result):
+    if 'error' in result:
+        st.error(result['error'])
+        return
+
+    st.markdown("## 🎭 Emotion Prediction Result")
+
+    # Card-style Display
+    st.markdown(f"""
+    <div style="padding: 15px; border-radius: 10px; 
+                background-color: {'#d4edda' if 'Positive' in result['primary_emotion'] else '#f8d7da'}; 
+                color: {'#155724' if 'Positive' in result['primary_emotion'] else '#721c24'};
+                font-size: 20px; text-align: center;">
+        <strong>{result['primary_emotion']}</strong>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Show Confidence Metric
+    st.metric(label="Confidence", value=result["confidence"], delta="🔍 Model Certainty")
+
+    # Emotion Distribution with Minimum Visualization Fix
+    with st.expander("📊 View Emotion Distribution"):
+        col1, col2 = st.columns(2)
+
+        pos_value = round(result['distribution']['Positive'], 1)
+        neg_value = round(result['distribution']['Negative'], 1)
+
+        # Ensure minimum visibility (at least 1% if greater than 0)
+        pos_bar = max(1, min(100, int(pos_value))) if pos_value > 0 else 0
+        neg_bar = max(1, min(100, int(neg_value))) if neg_value > 0 else 0
+
+        with col1:
+            st.markdown(f"😊 **Positive**: {pos_value}%")
+            st.progress(pos_bar)  # Always shows at least 1% for visibility
+        
+        with col2:
+            st.markdown(f"😞 **Negative**: {neg_value}%")
+            st.progress(neg_bar)  # Always shows at least 1% for visibility
+
+    # Debugging JSON Output
+    with st.expander("🛠 Debugging Data"):
+        st.json(result)
 
 # 🔹 Streamlit UI Components
 st.sidebar.header("Upload Audio or Enter YouTube URL")
@@ -196,7 +238,7 @@ if uploaded_file is not None:
     with st.spinner("Predicting emotion..."):
         result = predict_emotion(mel_spec)
 
-    st.write(result)
+    display_results(result)
     os.remove(filepath)  # Cleanup
 
 st.sidebar.write("Developed with ❤️ using Streamlit 🚀")
